@@ -1,0 +1,14 @@
+.build/
+dist/
+.swiftpm/
+.DS_Store
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+Models/
+*.bin
+*.mlmodelc/
+*.mlpackage/
+Resources/icon-1024.png
+Resources/AppIcon.iconset/
