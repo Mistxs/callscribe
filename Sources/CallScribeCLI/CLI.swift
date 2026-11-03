@@ -31,6 +31,8 @@ struct CallScribeCLI {
             try await transcribe(arguments: arguments)
         case "record":
             try await record(arguments: arguments)
+        case "mix":
+            try await mix(arguments: arguments)
         case "-h", "--help", "help":
             printUsage()
         default:
@@ -194,6 +196,59 @@ struct CallScribeCLI {
         FileHandle.standardError.write(Data("Готово: \(Format.duration(output.duration)) аудио/видео\n".utf8))
     }
 
+    private static func mix(arguments: [String]) async throws {
+        guard let first = arguments.first, !first.hasPrefix("--") else {
+            printUsage()
+            exit(2)
+        }
+
+        var microphonePath: String?
+        var offset: Double = 0
+        var outputPath: String?
+        var index = 1
+
+        while index < arguments.count {
+            switch arguments[index] {
+            case "--mic":
+                index += 1
+                guard index < arguments.count else { throw CLIError.missingValue("--mic") }
+                microphonePath = arguments[index]
+            case "--offset":
+                index += 1
+                guard index < arguments.count, let value = Double(arguments[index]) else {
+                    throw CLIError.missingValue("--offset")
+                }
+                offset = value
+            case "--out":
+                index += 1
+                guard index < arguments.count else { throw CLIError.missingValue("--out") }
+                outputPath = arguments[index]
+            default:
+                throw CLIError.unknownArgument(arguments[index])
+            }
+            index += 1
+        }
+
+        let primary = URL(fileURLWithPath: (first as NSString).expandingTildeInPath)
+        guard FileManager.default.fileExists(atPath: primary.path) else {
+            throw CLIError.fileNotFound(first)
+        }
+        let microphone = microphonePath.map {
+            URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)
+        }
+        let output = outputPath.map {
+            URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)
+        } ?? primary.deletingPathExtension().appendingPathExtension("mixed.wav")
+
+        let result = try await AudioExporter.exportMixedWAV(
+            primary: primary,
+            microphone: microphone,
+            microphoneOffset: offset,
+            to: output
+        )
+        print(result.path)
+    }
+
     private static func printUsage() {
         print("""
         CallScribe CLI — локальная расшифровка аудио и видео.
@@ -201,6 +256,7 @@ struct CallScribeCLI {
         Использование:
           callscribe-cli transcribe <файл> [опции]
           callscribe-cli record [опции]
+          callscribe-cli mix <файл> [опции]
           callscribe-cli models
 
         Опции transcribe:
@@ -216,6 +272,11 @@ struct CallScribeCLI {
           --video             записать экран вместо аудио
           --mic               добавить микрофон
           --out <папка>       базовая папка (по умолчанию ~/Documents/CallScribe)
+
+        Опции mix:
+          --mic <файл>        дорожка микрофона (.mic.m4a)
+          --offset <сек>      смещение микрофона относительно системного звука
+          --out <файл.wav>    куда сохранить (по умолчанию <запись>.mixed.wav)
         """)
     }
 

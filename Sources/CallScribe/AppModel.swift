@@ -15,6 +15,7 @@ final class AppModel: ObservableObject {
         case downloading
         case loadingModel
         case transcribing
+        case exporting
         case done
         case failed
     }
@@ -26,6 +27,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var warning: String?
     @Published private(set) var lastTranscriptURL: URL?
     @Published private(set) var lastRecordingURL: URL?
+    @Published private(set) var lastMixedURL: URL?
     @Published private(set) var modelAvailability: [String: Bool] = [:]
     @Published private(set) var detail = "Готово"
     @Published private(set) var lastError: String?
@@ -88,7 +90,7 @@ final class AppModel: ObservableObject {
 
     var isBusy: Bool {
         switch activity {
-        case .preparing, .recording, .stopping, .downloading, .loadingModel, .transcribing:
+        case .preparing, .recording, .stopping, .downloading, .loadingModel, .transcribing, .exporting:
             return true
         case .idle, .done, .failed:
             return false
@@ -126,6 +128,8 @@ final class AppModel: ObservableObject {
                 return "Расшифровываю \(Int(progress * 100))%"
             }
             return "Расшифровываю…"
+        case .exporting:
+            return "Объединяю дорожки в один файл…"
         case .done:
             return detail
         case .failed:
@@ -137,7 +141,7 @@ final class AppModel: ObservableObject {
         switch activity {
         case .recording:
             return "record.circle.fill"
-        case .stopping, .downloading, .loadingModel, .transcribing, .preparing:
+        case .stopping, .downloading, .loadingModel, .transcribing, .exporting, .preparing:
             return "waveform"
         case .failed:
             return "exclamationmark.triangle"
@@ -210,6 +214,7 @@ final class AppModel: ObservableObject {
             elapsed = 0
             lastRecordingOutput = output
             lastRecordingURL = output.primaryURL
+            lastMixedURL = nil
             recordingKind = output.kind
             rememberPaths()
             if let outputWarning = output.warning {
@@ -394,6 +399,50 @@ final class AppModel: ObservableObject {
         settingsWindow = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: - Combined file for external services
+
+    var canExportSingleFile: Bool {
+        canStart && lastRecordingOutput?.microphoneURL != nil
+    }
+
+    func exportLastRecordingAsSingleFile() {
+        guard canStart, let output = lastRecordingOutput else { return }
+        guard let microphone = output.microphoneURL else {
+            detail = "У этой записи нет отдельной дорожки микрофона"
+            return
+        }
+
+        activity = .exporting
+        progress = nil
+        detail = "Объединяю дорожки в один файл…"
+
+        Task {
+            do {
+                let outputURL = output.primaryURL
+                    .deletingPathExtension()
+                    .appendingPathExtension("mixed.wav")
+                let exported = try await AudioExporter.exportMixedWAV(
+                    primary: output.primaryURL,
+                    microphone: microphone,
+                    microphoneOffset: output.microphoneOffset,
+                    to: outputURL
+                )
+                lastMixedURL = exported
+                activity = .done
+                detail = "Один файл готов: \(exported.lastPathComponent)"
+                NSSound(named: "Glass")?.play()
+                NSWorkspace.shared.activateFileViewerSelecting([exported])
+            } catch {
+                fail(error)
+            }
+        }
+    }
+
+    func revealLastMixedFile() {
+        guard let lastMixedURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([lastMixedURL])
     }
 
     // MARK: - Menu actions

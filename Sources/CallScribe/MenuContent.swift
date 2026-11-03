@@ -64,6 +64,18 @@ struct MenuContent: View {
                 }
                 .disabled(!model.canStart)
 
+                if model.canExportSingleFile {
+                    Button("Сделать один аудиофайл (.wav)") {
+                        model.exportLastRecordingAsSingleFile()
+                    }
+                }
+
+                if model.lastMixedURL != nil {
+                    Button("Показать объединённый файл") {
+                        model.revealLastMixedFile()
+                    }
+                }
+
                 Button("Показать последнюю запись в Finder") {
                     model.revealLastRecording()
                 }
