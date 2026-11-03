@@ -173,7 +173,7 @@ public enum ModelStore {
         return URL(string: "https://huggingface.co/\(repo)/resolve/main/\(encoded)")!
     }
 
-    private static func downloadFile(
+    static func downloadFile(
         from url: URL,
         to destination: URL,
         onProgress: @escaping (Int64, Int64) -> Void

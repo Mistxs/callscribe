@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastRecordingURL: URL?
     @Published private(set) var lastMixedURL: URL?
     @Published private(set) var modelAvailability: [String: Bool] = [:]
+    @Published private(set) var gigaAMModelAvailable = false
     @Published private(set) var detail = "Готово"
     @Published private(set) var lastError: String?
 
@@ -251,16 +252,32 @@ final class AppModel: ObservableObject {
         detail = ""
         let variant = settings.modelID
 
-        var audioURLs: [(url: URL, offset: TimeInterval)] = [(output.primaryURL, 0)]
+        let hasMicrophone = output.microphoneURL != nil
+        var tracks = [
+            AudioTrackInput(
+                url: output.primaryURL,
+                offset: 0,
+                speaker: hasMicrophone ? "Собеседник" : nil,
+                kind: .system
+            )
+        ]
         if let microphoneURL = output.microphoneURL {
-            audioURLs.append((microphoneURL, output.microphoneOffset))
+            tracks.append(
+                AudioTrackInput(
+                    url: microphoneURL,
+                    offset: output.microphoneOffset,
+                    speaker: settings.speakerName,
+                    kind: .microphone
+                )
+            )
         }
 
         do {
             let data = try await TranscriptionService.shared.transcribe(
-                audioURLs: audioURLs,
+                tracks: tracks,
                 language: settings.language,
                 variant: variant,
+                engine: settings.recognitionEngine,
                 stage: { [weak self] stage in
                     Task { @MainActor in
                         guard let self else { return }
@@ -299,8 +316,8 @@ final class AppModel: ObservableObject {
                 title: output.title,
                 date: output.startedAt,
                 duration: data.duration,
-                modelTitle: settings.model.title,
-                language: settings.language,
+                modelTitle: data.modelVariant,
+                language: settings.recognitionEngine == .gigaam ? "ru" : settings.language,
                 recordingName: output.primaryURL.lastPathComponent
             )
             let files = try TranscriptWriter.write(
@@ -314,7 +331,11 @@ final class AppModel: ObservableObject {
 
             lastTranscriptURL = files.first
             rememberPaths()
-            modelAvailability[variant] = true
+            if settings.recognitionEngine == .gigaam {
+                gigaAMModelAvailable = true
+            } else {
+                modelAvailability[variant] = true
+            }
             progress = nil
             activity = .done
             detail = "Готово: \(files.first?.lastPathComponent ?? "расшифровка")"
@@ -346,19 +367,41 @@ final class AppModel: ObservableObject {
                 result[variant.id] = TranscriptionService.shared.isModelAvailable(variant.id)
             }
             let availability = result
+            let gigaAM = TranscriptionService.shared.isGigaAMModelAvailable()
             await MainActor.run {
                 self.modelAvailability = availability
+                self.gigaAMModelAvailable = gigaAM
             }
         }
     }
 
     func downloadSelectedModel() {
         guard canStart else { return }
-        let variant = settings.modelID
         activity = .downloading
         progress = 0
         lastError = nil
 
+        if settings.recognitionEngine == .gigaam {
+            Task {
+                do {
+                    _ = try await TranscriptionService.shared.downloadGigaAMModel { [weak self] value in
+                        Task { @MainActor in
+                            self?.progress = value
+                        }
+                    }
+                    gigaAMModelAvailable = true
+                    activity = .idle
+                    progress = nil
+                    detail = "Модель GigaAM загружена"
+                    NSSound(named: "Glass")?.play()
+                } catch {
+                    fail(error)
+                }
+            }
+            return
+        }
+
+        let variant = settings.modelID
         Task {
             do {
                 _ = try await TranscriptionService.shared.downloadModel(variant: variant) { [weak self] value in
@@ -543,10 +586,17 @@ final class AppModel: ObservableObject {
     /// Loads Whisper while the call is being recorded, so the first transcription
     /// does not have to wait for Core ML to specialise the model.
     private func prepareModelInBackground() {
+        let engine = settings.recognitionEngine
         let variant = settings.modelID
         Task.detached(priority: .utility) {
-            guard TranscriptionService.shared.isModelAvailable(variant) else { return }
-            await TranscriptionService.shared.preload(variant: variant)
+            switch engine {
+            case .gigaam:
+                guard TranscriptionService.shared.isGigaAMModelAvailable() else { return }
+                await TranscriptionService.shared.preloadGigaAM()
+            case .whisper:
+                guard TranscriptionService.shared.isModelAvailable(variant) else { return }
+                await TranscriptionService.shared.preload(variant: variant)
+            }
         }
     }
 

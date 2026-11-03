@@ -23,6 +23,8 @@ struct CallScribeCLI {
 
         switch command {
         case "models":
+            let gigaAM = TranscriptionService.shared.isGigaAMModelAvailable()
+            print("gigaam\tGigaAM v3 (русский)\t~221 МБ\t\(gigaAM ? "загружена" : "нет")")
             for variant in WhisperModels.all {
                 let available = TranscriptionService.shared.isModelAvailable(variant.id)
                 print("\(variant.id)\t\(variant.title)\t\(variant.approximateSize)\t\(available ? "загружена" : "нет")")
@@ -48,11 +50,15 @@ struct CallScribeCLI {
         }
 
         var modelID = WhisperModels.largeV3.id
+        var engine: RecognitionEngine = .gigaam
         var language = "ru"
         var outputPath: String?
         var includeTimestamps = false
         var saveSRT = false
         var quiet = false
+        var microphonePath: String?
+        var microphoneOffset: Double = 0
+        var myName = "Вы"
 
         var index = 1
         while index < arguments.count {
@@ -62,6 +68,13 @@ struct CallScribeCLI {
                 index += 1
                 guard index < arguments.count else { throw CLIError.missingValue("--model") }
                 modelID = arguments[index]
+            case "--engine":
+                index += 1
+                guard index < arguments.count else { throw CLIError.missingValue("--engine") }
+                guard let parsed = RecognitionEngine(rawValue: arguments[index]) else {
+                    throw CLIError.unknownArgument(arguments[index])
+                }
+                engine = parsed
             case "--language":
                 index += 1
                 guard index < arguments.count else { throw CLIError.missingValue("--language") }
@@ -70,6 +83,20 @@ struct CallScribeCLI {
                 index += 1
                 guard index < arguments.count else { throw CLIError.missingValue("--out") }
                 outputPath = arguments[index]
+            case "--mic":
+                index += 1
+                guard index < arguments.count else { throw CLIError.missingValue("--mic") }
+                microphonePath = arguments[index]
+            case "--offset":
+                index += 1
+                guard index < arguments.count, let value = Double(arguments[index]) else {
+                    throw CLIError.missingValue("--offset")
+                }
+                microphoneOffset = value
+            case "--my-name":
+                index += 1
+                guard index < arguments.count else { throw CLIError.missingValue("--my-name") }
+                myName = arguments[index]
             case "--timestamps":
                 includeTimestamps = true
             case "--srt":
@@ -87,17 +114,47 @@ struct CallScribeCLI {
             throw CLIError.fileNotFound(input)
         }
 
+        var tracks = [
+            AudioTrackInput(
+                url: url,
+                offset: 0,
+                speaker: microphonePath == nil ? nil : "Собеседник",
+                kind: microphonePath == nil ? .other : .system
+            )
+        ]
+        if let microphonePath {
+            let micURL = URL(fileURLWithPath: (microphonePath as NSString).expandingTildeInPath)
+            guard FileManager.default.fileExists(atPath: micURL.path) else {
+                throw CLIError.fileNotFound(microphonePath)
+            }
+            tracks.append(
+                AudioTrackInput(
+                    url: micURL,
+                    offset: microphoneOffset,
+                    speaker: myName,
+                    kind: .microphone
+                )
+            )
+        }
+
         let variant = WhisperModels.variant(id: modelID)
-        FileHandle.standardError.write(Data("Модель: \(variant.title) (\(variant.id))\n".utf8))
+        FileHandle.standardError.write(Data("Движок: \(engine.title)\n".utf8))
+        if engine == .whisper {
+            FileHandle.standardError.write(Data("Модель: \(variant.title) (\(variant.id))\n".utf8))
+        }
         FileHandle.standardError.write(Data("Файл: \(url.path)\n".utf8))
+        if let microphonePath {
+            FileHandle.standardError.write(Data("Микрофон: \(microphonePath)\n".utf8))
+        }
 
         let started = Date()
         let modelPrinter = StepPrinter(enabled: !quiet)
         let transcriptionPrinter = StepPrinter(enabled: !quiet)
         let data = try await TranscriptionService.shared.transcribe(
-            audioURLs: [(url, 0)],
+            tracks: tracks,
             language: language,
             variant: variant.id,
+            engine: engine,
             stage: { stage in
                 switch stage {
                 case .downloadingModel:
@@ -117,12 +174,14 @@ struct CallScribeCLI {
         )
 
         let elapsed = Date().timeIntervalSince(started)
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let recordingDate = attributes?[.creationDate] as? Date ?? Date()
         let metadata = TranscriptMetadata(
             title: url.deletingPathExtension().lastPathComponent,
-            date: Date(),
+            date: recordingDate,
             duration: data.duration,
-            modelTitle: variant.title,
-            language: language,
+            modelTitle: data.modelVariant,
+            language: engine == .gigaam ? "ru" : language,
             recordingName: url.lastPathComponent
         )
 
@@ -260,8 +319,12 @@ struct CallScribeCLI {
           callscribe-cli models
 
         Опции transcribe:
-          --model <id>        large-v3-v20240930_626MB (по умолчанию) или large-v3-v20240930_turbo_632MB
+          --engine <gigaam|whisper>  движок (по умолчанию GigaAM для русского)
+          --model <id>        модель Whisper: large-v3-v20240930_626MB, _turbo_632MB или полная
           --language <ru|auto>
+          --mic <файл>        отдельная дорожка микрофона (для подписей спикеров)
+          --offset <сек>      смещение микрофона относительно основного файла
+          --my-name <имя>     как подписывать ваш голос (по умолчанию «Вы»)
           --out <файл.txt>    сохранить текст в файл (рядом появится .srt при --srt)
           --timestamps        добавить таймкоды в текст
           --srt               сохранить субтитры

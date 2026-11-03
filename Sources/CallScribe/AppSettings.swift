@@ -36,6 +36,14 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(saveSRT, forKey: Keys.saveSRT) }
     }
 
+    @Published var userName: String {
+        didSet { defaults.set(userName, forKey: Keys.userName) }
+    }
+
+    @Published var engine: String {
+        didSet { defaults.set(engine, forKey: Keys.engine) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
@@ -47,6 +55,8 @@ final class AppSettings: ObservableObject {
         autoTranscribe = defaults.object(forKey: Keys.autoTranscribe) as? Bool ?? true
         includeTimestamps = defaults.object(forKey: Keys.includeTimestamps) as? Bool ?? false
         saveSRT = defaults.object(forKey: Keys.saveSRT) as? Bool ?? false
+        userName = defaults.string(forKey: Keys.userName) ?? "Вы"
+        engine = defaults.string(forKey: Keys.engine) ?? RecognitionEngine.gigaam.rawValue
     }
 
     var libraryURL: URL {
@@ -69,6 +79,15 @@ final class AppSettings: ObservableObject {
         language == Self.languageAuto ? "авто" : "ru"
     }
 
+    var speakerName: String {
+        let trimmed = userName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Вы" : trimmed
+    }
+
+    var recognitionEngine: RecognitionEngine {
+        RecognitionEngine(rawValue: engine) ?? .gigaam
+    }
+
     private enum Keys {
         static let libraryFolder = "libraryFolder"
         static let modelID = "modelID"
@@ -77,5 +96,7 @@ final class AppSettings: ObservableObject {
         static let autoTranscribe = "autoTranscribe"
         static let includeTimestamps = "includeTimestamps"
         static let saveSRT = "saveSRT"
+        static let userName = "userName"
+        static let engine = "recognitionEngine"
     }
 }

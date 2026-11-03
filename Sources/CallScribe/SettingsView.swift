@@ -34,53 +34,70 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                section("Модель расшифровки") {
-                    Picker("", selection: $settings.modelID) {
-                        ForEach(WhisperModels.all) { variant in
-                            Text("\(variant.title) — \(variant.approximateSize)").tag(variant.id)
+                section("Движок распознавания") {
+                    Picker("", selection: $settings.engine) {
+                        ForEach(RecognitionEngine.allCases, id: \.rawValue) { engine in
+                            Text(engine.title).tag(engine.rawValue)
                         }
                     }
                     .pickerStyle(.radioGroup)
                     .labelsHidden()
 
-                    Text(settings.model.detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(model.modelAvailability[settings.modelID] == true ? Color.green : Color.orange)
-                            .frame(width: 8, height: 8)
-                        Text(model.modelAvailability[settings.modelID] == true ? "Модель загружена" : "Модель будет скачана при первом использовании")
+                    if settings.recognitionEngine == .gigaam {
+                        Text("Русская модель GigaAM v3: лучше держит имена, термины, окончания и пунктуацию. Работает только с русским.")
                             .font(.caption)
+                            .foregroundStyle(.secondary)
 
-                        Spacer()
+                        modelStatusRow(
+                            available: model.gigaAMModelAvailable,
+                            loadedText: "Модель GigaAM загружена",
+                            sizeText: "~221 МБ"
+                        )
 
-                        if model.activity == .downloading {
-                            ProgressView(value: model.progress ?? 0)
-                                .frame(width: 110)
-                            Text("\(Int((model.progress ?? 0) * 100))%")
-                                .font(.caption.monospacedDigit())
-                                .frame(width: 38, alignment: .trailing)
-                        } else if model.modelAvailability[settings.modelID] == true {
-                            Text("Готова к работе")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Button("Скачать сейчас") {
-                                model.downloadSelectedModel()
+                        Text("Первое использование: скачивание ~221 МБ. Дальше всё офлайн.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        Picker("", selection: $settings.modelID) {
+                            ForEach(WhisperModels.all) { variant in
+                                Text("\(variant.title) — \(variant.approximateSize)").tag(variant.id)
                             }
-                            .disabled(!model.canStart)
                         }
+                        .pickerStyle(.radioGroup)
+                        .labelsHidden()
+
+                        Text(settings.model.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        modelStatusRow(
+                            available: model.modelAvailability[settings.modelID] == true,
+                            loadedText: "Модель загружена",
+                            sizeText: ""
+                        )
                     }
                 }
 
                 section("Расшифровка") {
-                    Picker("Язык", selection: $settings.language) {
-                        Text("Русский").tag(AppSettings.languageRussian)
-                        Text("Определять автоматически").tag(AppSettings.languageAuto)
+                    HStack {
+                        Text("Ваше имя в тексте")
+                        Spacer()
+                        TextField("Вы", text: $settings.userName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 180)
                     }
-                    .pickerStyle(.segmented)
+
+                    if settings.recognitionEngine == .whisper {
+                        Picker("Язык", selection: $settings.language) {
+                            Text("Русский").tag(AppSettings.languageRussian)
+                            Text("Определять автоматически").tag(AppSettings.languageAuto)
+                        }
+                        .pickerStyle(.segmented)
+                    } else {
+                        Text("GigaAM распознаёт только русский. Для других языков выберите Whisper.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                     Toggle("Записывать микрофон (ваш голос)", isOn: $settings.includeMicrophone)
                     Toggle("Автоматически расшифровывать после остановки", isOn: $settings.autoTranscribe)
@@ -183,6 +200,42 @@ struct SettingsView: View {
             return "Разрешение будет запрошено при первой записи."
         @unknown default:
             return "Неизвестный статус."
+        }
+    }
+
+    private func modelStatusRow(available: Bool, loadedText: String, sizeText: String) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(available ? Color.green : Color.orange)
+                .frame(width: 8, height: 8)
+
+            Text(available ? loadedText : "Будет скачана при первом использовании")
+                .font(.caption)
+
+            if !sizeText.isEmpty {
+                Text(sizeText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if model.activity == .downloading {
+                ProgressView(value: model.progress ?? 0)
+                    .frame(width: 110)
+                Text("\(Int((model.progress ?? 0) * 100))%")
+                    .font(.caption.monospacedDigit())
+                    .frame(width: 38, alignment: .trailing)
+            } else if available {
+                Text("Готова к работе")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Button("Скачать сейчас") {
+                    model.downloadSelectedModel()
+                }
+                .disabled(!model.canStart)
+            }
         }
     }
 

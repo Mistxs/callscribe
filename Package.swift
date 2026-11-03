@@ -12,13 +12,15 @@ let package = Package(
         .library(name: "CallScribeCore", targets: ["CallScribeCore"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/WhisperKit.git", exact: "1.1.1")
+        .package(url: "https://github.com/argmaxinc/WhisperKit.git", exact: "1.1.1"),
+        .package(url: "https://github.com/ekhodzitsky/gigastt-swift", exact: "2.17.0"),
     ],
     targets: [
         .target(
             name: "CallScribeCore",
             dependencies: [
-                .product(name: "WhisperKit", package: "WhisperKit")
+                .product(name: "WhisperKit", package: "WhisperKit"),
+                .product(name: "GigaSTT", package: "gigastt-swift"),
             ]
         ),
         .target(
