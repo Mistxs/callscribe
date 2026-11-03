@@ -20,8 +20,12 @@ if [ -f Resources/AppIcon.icns ]; then
     /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$APP/Contents/Info.plist" 2>/dev/null || true
 fi
 
-# Ad-hoc signature: enough for local use and TCC permissions.
-codesign --force --sign - --timestamp=none "$APP"
+# Ad-hoc signature with a stable designated requirement.
+# Without an explicit requirement macOS ties TCC permissions to the binary hash,
+# so every rebuild would force the user to grant screen recording again.
+codesign --force --sign - --timestamp=none \
+    --requirements '=designated => identifier "com.mistxs.callscribe"' \
+    "$APP"
 
 echo "Готово: $APP"
 echo "Запуск: open $APP"

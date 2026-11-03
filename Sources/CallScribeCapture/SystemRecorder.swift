@@ -4,7 +4,7 @@ import CoreMedia
 import Foundation
 import ScreenCaptureKit
 
-enum RecordingError: LocalizedError {
+public enum RecordingError: LocalizedError {
     case noDisplay
     case screenPermission
     case microphonePermission
@@ -12,7 +12,7 @@ enum RecordingError: LocalizedError {
     case captureFailed(Error)
     case emptyFile
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .noDisplay:
             return "Не найден экран для записи."

@@ -1,4 +1,5 @@
 import AppKit
+import CallScribeCapture
 import CallScribeCore
 import SwiftUI
 
@@ -93,9 +94,15 @@ struct SettingsView: View {
                         granted: Permissions.screenGranted,
                         note: Permissions.screenGranted
                             ? "Разрешено"
-                            : "После включения в Системных настройках перезапустите приложение."
+                            : "Нажмите «Разрешить», затем включите CallScribe в списке. Если его там нет — нажмите «+» и выберите /Applications/CallScribe.app, после чего перезапустите приложение."
                     ) {
-                        Permissions.openScreenSettings()
+                        Task {
+                            _ = Permissions.requestScreen()
+                            permissionRefresh = UUID()
+                            if !Permissions.screenGranted {
+                                Permissions.openScreenSettings()
+                            }
+                        }
                     }
 
                     Divider()

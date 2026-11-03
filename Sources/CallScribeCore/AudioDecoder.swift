@@ -128,4 +128,45 @@ public enum AudioDecoder {
     public static func duration(samples: [Float]) -> TimeInterval {
         Double(samples.count) / Double(sampleRate)
     }
+
+    /// Removes leading and trailing low-energy noise. This reduces Whisper
+    /// hallucinations on silence without cutting quiet speech in the middle.
+    /// Returns the trimmed samples and the offset (seconds) that was removed.
+    public static func trimSilence(_ samples: [Float]) -> (samples: [Float], offset: TimeInterval) {
+        guard !samples.isEmpty else { return ([], 0) }
+
+        let frameLength = 320 // 20 ms at 16 kHz
+        var frameStarts: [Int] = []
+        var frameRMS: [Float] = []
+        var peak: Float = 0
+
+        var index = 0
+        while index < samples.count {
+            let end = min(index + frameLength, samples.count)
+            var sum: Float = 0
+            for i in index..<end {
+                sum += samples[i] * samples[i]
+            }
+            let rms = sqrt(sum / Float(max(1, end - index)))
+            peak = max(peak, rms)
+            frameStarts.append(index)
+            frameRMS.append(rms)
+            index = end
+        }
+
+        guard peak > 0.0001 else { return ([], 0) }
+        let threshold = max(peak * 0.04, 0.0015)
+
+        guard let first = frameRMS.firstIndex(where: { $0 > threshold }),
+              let last = frameRMS.lastIndex(where: { $0 > threshold }) else {
+            return ([], 0)
+        }
+
+        let padding = sampleRate / 4 // 250 ms so we do not clip the attack
+        let start = max(0, frameStarts[first] - padding)
+        let end = min(samples.count, frameStarts[last] + frameLength + padding)
+        guard end > start else { return ([], 0) }
+
+        return (Array(samples[start..<end]), Double(start) / Double(sampleRate))
+    }
 }

@@ -3,25 +3,25 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-enum Permissions {
-    static var screenGranted: Bool {
+public enum Permissions {
+    public static var screenGranted: Bool {
         CGPreflightScreenCaptureAccess()
     }
 
     @discardableResult
-    static func requestScreen() -> Bool {
+    public static func requestScreen() -> Bool {
         CGRequestScreenCaptureAccess()
     }
 
-    static var microphoneStatus: AVAuthorizationStatus {
+    public static var microphoneStatus: AVAuthorizationStatus {
         AVCaptureDevice.authorizationStatus(for: .audio)
     }
 
-    static var microphoneGranted: Bool {
+    public static var microphoneGranted: Bool {
         microphoneStatus == .authorized
     }
 
-    static func requestMicrophone() async -> Bool {
+    public static func requestMicrophone() async -> Bool {
         switch microphoneStatus {
         case .authorized:
             return true
@@ -34,11 +34,11 @@ enum Permissions {
         }
     }
 
-    static func openScreenSettings() {
+    public static func openScreenSettings() {
         open("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
     }
 
-    static func openMicrophoneSettings() {
+    public static func openMicrophoneSettings() {
         open("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
     }
 

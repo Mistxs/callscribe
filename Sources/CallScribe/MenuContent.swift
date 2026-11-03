@@ -1,4 +1,5 @@
 import AppKit
+import CallScribeCapture
 import CallScribeCore
 import SwiftUI
 

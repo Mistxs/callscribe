@@ -113,12 +113,19 @@ public actor TranscriptionService {
             }
         }
 
-        let samples = AudioDecoder.mix(decoded)
-        guard !samples.isEmpty else {
+        let mixed = AudioDecoder.mix(decoded)
+        guard !mixed.isEmpty else {
             throw TranscriptionError.emptyAudio
         }
+        let originalDuration = AudioDecoder.duration(samples: mixed)
+        let trimmed = AudioDecoder.trimSilence(mixed)
+        let samples = trimmed.samples
+        guard !samples.isEmpty else {
+            throw TranscriptionError.emptyResult
+        }
+        let trimOffset = trimmed.offset
         let duration = AudioDecoder.duration(samples: samples)
-        Log.info("Аудио для расшифровки: \(String(format: "%.1f", duration)) c, \(audioURLs.count) дорожек")
+        Log.info("Аудио для расшифровки: \(String(format: "%.1f", duration)) c, \(audioURLs.count) дорожек, обрезано \(String(format: "%.1f", trimOffset)) c")
 
         try await ensureLoaded(variant: variant, stage: stage, progress: modelProgress)
 
@@ -162,9 +169,16 @@ public actor TranscriptionService {
         var segments: [TranscriptSegment] = []
         for result in resultArray {
             for segment in result.segments {
-                let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !text.isEmpty else { continue }
-                segments.append(TranscriptSegment(start: segment.start, end: segment.end, text: text))
+                let cleaned = Self.removeKnownArtifacts(segment.text)
+                guard !cleaned.isEmpty else { continue }
+                if let last = segments.last, last.text == cleaned { continue }
+                segments.append(
+                    TranscriptSegment(
+                        start: segment.start + Float(trimOffset),
+                        end: segment.end + Float(trimOffset),
+                        text: cleaned
+                    )
+                )
             }
         }
         segments.sort { $0.start < $1.start }
@@ -183,7 +197,7 @@ public actor TranscriptionService {
             text: fullText,
             segments: segments,
             language: detected,
-            duration: duration,
+            duration: originalDuration,
             modelVariant: WhisperModels.variant(id: variant).title
         )
     }
@@ -275,6 +289,44 @@ public actor TranscriptionService {
             loadTaskVariant = nil
             throw error
         }
+    }
+
+    /// Whisper occasionally hallucinates YouTube subtitle credits on noise.
+    /// These phrases are never useful in a call transcript, so trim them.
+    private static func removeKnownArtifacts(_ text: String) -> String {
+        let markers = [
+            "субтитры создавал",
+            "субтитры создавала",
+            "субтитры подготовил",
+            "субтитры подготовила",
+            "субтитры делал",
+            "редактор субтитров",
+            "dimatorzok",
+            "amara.org",
+        ]
+
+        var result = text
+        for marker in markers {
+            if let range = result.range(of: marker, options: [.caseInsensitive, .diacriticInsensitive]) {
+                result = String(result[..<range.lowerBound])
+            }
+        }
+
+        // Whisper marks non-speech sounds as *music*, [laughter], etc.
+        result = result.replacingOccurrences(
+            of: #"\*[^*]{1,40}\*"#,
+            with: " ",
+            options: .regularExpression
+        )
+        result = result.replacingOccurrences(
+            of: #"\[[^\]]{1,40}\]"#,
+            with: " ",
+            options: .regularExpression
+        )
+
+        return result
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func loadWhisperKit(folder: URL, tokenizerFolder: URL) async throws -> WhisperKit {

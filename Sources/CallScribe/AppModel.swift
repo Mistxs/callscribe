@@ -1,4 +1,5 @@
 import AppKit
+import CallScribeCapture
 import CallScribeCore
 import Combine
 import Foundation
@@ -46,10 +47,37 @@ final class AppModel: ObservableObject {
         }
         refreshModelAvailability()
         restoreLastSession()
+        Log.info("Разрешения: экран=\(Permissions.screenGranted), микрофон=\(Permissions.microphoneStatus.rawValue)")
+
+        if CommandLine.arguments.contains("--no-mic") {
+            settings.includeMicrophone = false
+        }
+
+        if let index = CommandLine.arguments.firstIndex(of: "--record-test"),
+           index + 1 < CommandLine.arguments.count,
+           let seconds = Double(CommandLine.arguments[index + 1]) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                guard let self else { return }
+                self.startRecording(kind: .call)
+                DispatchQueue.main.asyncAfter(deadline: .now() + max(2, seconds)) { [weak self] in
+                    self?.stopRecording()
+                }
+            }
+        }
 
         if CommandLine.arguments.contains("--show-settings") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.openSettings()
+            }
+        }
+
+        if CommandLine.arguments.contains("--request-screen") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                NSApp.activate(ignoringOtherApps: true)
+                _ = Permissions.requestScreen()
+                if !Permissions.screenGranted {
+                    Permissions.openScreenSettings()
+                }
             }
         }
     }
@@ -537,7 +565,9 @@ final class AppModel: ObservableObject {
         let alert = NSAlert()
         alert.messageText = "Разрешите запись экрана"
         alert.informativeText = """
-        Откройте «Системные настройки» → «Конфиденциальность и безопасность» → «Запись экрана», включите CallScribe и перезапустите приложение.
+        Откройте «Системные настройки» → «Конфиденциальность и безопасность» → «Запись экрана и системного звука» и включите CallScribe.
+
+        Если CallScribe нет в списке, нажмите «+» и выберите /Applications/CallScribe.app. После включения перезапустите приложение.
 
         Без этого разрешения macOS не отдаёт ни экран, ни системный звук.
         """

@@ -2,18 +2,20 @@ import CallScribeCore
 import CoreMedia
 import Foundation
 
-final class RecordingController {
+public final class RecordingController {
     private var systemRecorder: SystemRecorder?
     private var microphoneRecorder: MicrophoneRecorder?
     private var active: ActiveRecording?
 
-    var onFailure: ((Error) -> Void)?
+    public var onFailure: ((Error) -> Void)?
 
-    var isActive: Bool {
+    public init() {}
+
+    public var isActive: Bool {
         active != nil
     }
 
-    func start(kind: RecordingKind, includeMicrophone: Bool, library: URL) async throws -> ActiveRecording {
+    public func start(kind: RecordingKind, includeMicrophone: Bool, library: URL) async throws -> ActiveRecording {
         guard active == nil else {
             throw RecordingError.captureFailed(
                 NSError(domain: "CallScribe", code: 2, userInfo: [NSLocalizedDescriptionKey: "Запись уже идёт"])
@@ -69,7 +71,7 @@ final class RecordingController {
         return recording
     }
 
-    func stop() async throws -> RecordingOutput {
+    public func stop() async throws -> RecordingOutput {
         guard let active else {
             throw RecordingError.emptyFile
         }
@@ -138,7 +140,7 @@ final class RecordingController {
         )
     }
 
-    func abort() async {
+    public func abort() async {
         if let microphoneRecorder {
             try? await microphoneRecorder.stop()
         }

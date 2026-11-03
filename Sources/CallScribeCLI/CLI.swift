@@ -1,3 +1,4 @@
+import CallScribeCapture
 import CallScribeCore
 import Foundation
 
@@ -28,6 +29,8 @@ struct CallScribeCLI {
             }
         case "transcribe":
             try await transcribe(arguments: arguments)
+        case "record":
+            try await record(arguments: arguments)
         case "-h", "--help", "help":
             printUsage()
         default:
@@ -143,21 +146,76 @@ struct CallScribeCLI {
         )
     }
 
+    private static func record(arguments: [String]) async throws {
+        var seconds: Double = 10
+        var kind: RecordingKind = .call
+        var includeMicrophone = false
+        var library = AppPaths.defaultLibraryFolder
+
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            switch argument {
+            case "--seconds":
+                index += 1
+                guard index < arguments.count, let value = Double(arguments[index]) else {
+                    throw CLIError.missingValue("--seconds")
+                }
+                seconds = value
+            case "--video":
+                kind = .screen
+            case "--mic":
+                includeMicrophone = true
+            case "--out":
+                index += 1
+                guard index < arguments.count else { throw CLIError.missingValue("--out") }
+                library = URL(fileURLWithPath: (arguments[index] as NSString).expandingTildeInPath)
+            default:
+                throw CLIError.unknownArgument(argument)
+            }
+            index += 1
+        }
+
+        guard Permissions.screenGranted else {
+            FileHandle.standardError.write(Data("Нет разрешения на запись экрана. Разрешите доступ в Системных настройках и перезапустите терминал.\n".utf8))
+            exit(3)
+        }
+
+        let controller = RecordingController()
+        let active = try await controller.start(
+            kind: kind,
+            includeMicrophone: includeMicrophone,
+            library: library
+        )
+        FileHandle.standardError.write(Data("Запись \(Int(seconds)) c → \(active.primaryURL.path)\n".utf8))
+        try await Task.sleep(nanoseconds: UInt64(max(0.2, seconds) * 1_000_000_000))
+        let output = try await controller.stop()
+        print(output.primaryURL.path)
+        FileHandle.standardError.write(Data("Готово: \(Format.duration(output.duration)) аудио/видео\n".utf8))
+    }
+
     private static func printUsage() {
         print("""
         CallScribe CLI — локальная расшифровка аудио и видео.
 
         Использование:
           callscribe-cli transcribe <файл> [опции]
+          callscribe-cli record [опции]
           callscribe-cli models
 
-        Опции:
+        Опции transcribe:
           --model <id>        large-v3-v20240930_626MB (по умолчанию) или large-v3-v20240930_turbo_632MB
           --language <ru|auto>
           --out <файл.txt>    сохранить текст в файл (рядом появится .srt при --srt)
           --timestamps        добавить таймкоды в текст
           --srt               сохранить субтитры
           --quiet             меньше вывода
+
+        Опции record:
+          --seconds <n>       длительность записи (по умолчанию 10)
+          --video             записать экран вместо аудио
+          --mic               добавить микрофон
+          --out <папка>       базовая папка (по умолчанию ~/Documents/CallScribe)
         """)
     }
 

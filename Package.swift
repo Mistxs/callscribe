@@ -21,13 +21,17 @@ let package = Package(
                 .product(name: "WhisperKit", package: "WhisperKit")
             ]
         ),
-        .executableTarget(
-            name: "CallScribe",
+        .target(
+            name: "CallScribeCapture",
             dependencies: ["CallScribeCore"]
         ),
         .executableTarget(
+            name: "CallScribe",
+            dependencies: ["CallScribeCore", "CallScribeCapture"]
+        ),
+        .executableTarget(
             name: "CallScribeCLI",
-            dependencies: ["CallScribeCore"]
+            dependencies: ["CallScribeCore", "CallScribeCapture"]
         ),
     ],
     swiftLanguageModes: [.v5]
