@@ -1,6 +1,10 @@
 # CallScribe
 
+[![build](https://github.com/Mistxs/callscribe/actions/workflows/build.yml/badge.svg)](https://github.com/Mistxs/callscribe/actions/workflows/build.yml)
+
 Меню-бар приложение для macOS: записывает звонок или экран, локально расшифровывает речь в текст и складывает результат в папку. Без облака, без отправки аудио наружу.
+
+Готовая сборка: [Releases](https://github.com/Mistxs/callscribe/releases/latest).
 
 ## Что умеет
 
